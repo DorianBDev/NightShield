@@ -2,11 +2,11 @@
 
 NightShield is an application that helps fight night terrors. It allows you to set a maximum sound level (in decibels) which, when reached, triggers an alert mode. This alert mode can be customized, but by default it will turn on your flashlight and start playing an alarm song. The goal is to detect when the user is in the grip of a night terror during their night, detecting the sound level and triggering effects to try to wake them up.
 
-<center>
-<img src="./etc/screenshots/1.png" width="180" height="350"/>
-<img src="./etc/screenshots/2.png" width="180" height="350"/>
+<p align="center">
+<img src="./etc/screenshots/1.png" width="180" height="350"/> 
+<img src="./etc/screenshots/2.png" width="180" height="350"/> 
 <img src="./etc/screenshots/3.png" width="180" height="350"/>
-</center>
+</p>
 
 ## Getting Started
 
