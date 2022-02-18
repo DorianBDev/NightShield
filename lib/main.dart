@@ -1,115 +1,332 @@
-import 'package:flutter/material.dart';
+/// MIT License
+///
+/// Copyright (c) 2022 Dorian Bachelot
+///
+/// Permission is hereby granted, free of charge, to any person obtaining
+/// a copy of this software and associated documentation files (the
+/// "Software"), to deal in the Software without restriction, including
+/// without limitation the rights to use, copy, modify, merge, publish,
+/// distribute, sublicense, and/or sell copies of the Software, and to
+/// permit persons to whom the Software is furnished to do so, subject to
+/// the following conditions:
+///
+/// The above copyright notice and this permission notice shall be
+/// included in all copies or substantial portions of the Software.
+///
+/// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+/// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+/// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+/// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+/// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+/// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+/// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-void main() {
-  runApp(const MyApp());
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'settings.dart';
+import 'storage.dart';
+
+// Entry point
+void main() async {
+  // Wait until flutter initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Wait until storage initialized
+  await Storage.init();
+
+  // Run app
+  runApp(const App());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+// App implementation
+class App extends StatelessWidget {
+  const App({Key? key}) : super(key: key);
 
-  // This widget is the root of your application.
+  // Build App
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Night Shield',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
+        brightness: Brightness.light,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+      ),
+      // ThemeMode.system to follow system theme,
+      // ThemeMode.light for light theme,
+      // ThemeMode.dark for dark theme
+      themeMode: ThemeMode.dark,
+      home: const HomePage(title: 'Night Shield'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+// Home page
+class HomePage extends StatefulWidget {
+  const HomePage({Key? key, required this.title}) : super(key: key);
 
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+// Home page implementation
+class _HomePageState extends State<HomePage> {
+  // Current audio level
+  double _audioLevel = 0.0;
 
-  void _incrementCounter() {
+  // Timer for audio level update
+  Timer? _timer;
+
+  // As the shield started
+  bool _started = false;
+
+  // In alert
+  bool _alert = false;
+
+  // Is the audio level greater than the decibel limit
+  bool _alertZone = false;
+
+  // If true, will not start a new alert
+  bool _disableAlert = false;
+
+  // Native code method channel
+  static const platform = MethodChannel('net.dorianb.nightshield');
+
+  // Constructor
+  @override
+  void initState() {
+    super.initState();
+    Settings().init();
+  }
+
+  // Destructor
+  @override
+  void dispose() {
+    super.dispose();
+    _stopShield();
+    Settings().save();
+  }
+
+  // Notification (snack bar)
+  void _notify(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // Update the audio level (called by the timer)
+  Future<void> _updateAudioLevel() async {
+    // Check if started
+    if (!_started) {
+      return;
+    }
+
+    // Invoke the native function
+    final double result = await platform.invokeMethod('getAudioLevel');
+
+    // Is in alert zone
+    bool alertZone;
+
+    // Test if greater than the decibel limit
+    if (result > Settings().getDouble("limit")) {
+      alertZone = true;
+      _startAlert();
+    } else {
+      alertZone = false;
+    }
+
+    // Update the current state
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _audioLevel = result;
+      _alertZone = alertZone;
     });
   }
 
+  // Start the alert system
+  void _startAlert() {
+    if (_alert || _disableAlert) {
+      return;
+    }
+
+    _notify('Alert!!!');
+
+    // Enable flash light
+    if (Settings().getBool("useFlashLight")) {
+      platform.invokeMethod('enableFlashLight');
+    }
+
+    // Enable alarm (sound)
+    if (Settings().getBool("useAlarm")) {
+      platform.invokeMethod('playAlarm');
+    }
+
+    // Update state
+    setState(() {
+      _alert = true;
+    });
+  }
+
+  // Stop the alert system
+  void _stopAlert() {
+    if (!_alert) {
+      return;
+    }
+
+    _notify('End of alert.');
+
+    // Disable flash light
+    platform.invokeMethod('disableFlashLight');
+
+    // Disable alarm (sound)
+    platform.invokeMethod('stopAlarm');
+
+    // Disable alert for a given time
+    _disableAlert = true;
+    Future.delayed(Duration(seconds: Settings().getInt("timeBetweenAlert")), () {
+      _disableAlert = false;
+    });
+
+    // Update state
+    setState(() {
+      _alert = false;
+    });
+  }
+
+  // Start the update loop and audio level check
+  void _startShield() {
+    if (_started) {
+      return;
+    }
+
+    // Invoke native method to start listening
+    platform.invokeMethod(
+        'startListening', {"recordTime": Settings().getInt("interval")});
+
+    // Prepare update timer
+    _timer = Timer.periodic(
+        Duration(milliseconds: Settings().getInt("interval")),
+        (Timer t) => _updateAudioLevel());
+
+    // Set started
+    _notify('Started shield.');
+
+    // Update state
+    setState(() {
+      _started = true;
+    });
+  }
+
+  // Stop the update loop and audio level check
+  void _stopShield() {
+    if (!_started) {
+      return;
+    }
+
+    // Invoke native method to stop listening
+    platform.invokeMethod('endListening');
+
+    // Disable flash light
+    platform.invokeMethod('disableFlashLight');
+
+    // Disable alarm (sound)
+    platform.invokeMethod('stopAlarm');
+
+    // Cancel timer
+    _timer?.cancel();
+
+    // Stop alert (if any)
+    _stopAlert();
+
+    // Set stopped
+    _notify('Stopped shield.');
+
+    // Update state
+    setState(() {
+      _started = false;
+    });
+  }
+
+  // Toggle the shield protection
+  void _toggleShield() {
+    if (_started) {
+      _stopShield();
+    } else {
+      _startShield();
+    }
+  }
+
+  // Build Home
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
+              );
+              Settings().save();
+            },
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             const Text(
-              'You have pushed the button this many times:',
+              'Current audio level (in decibels):',
             ),
+            const SizedBox(height: 15),
+            LinearProgressIndicator(
+              value: _audioLevel / 100.0,
+              semanticsLabel: 'Linear progress indicator',
+              valueColor: _alertZone
+                  ? const AlwaysStoppedAnimation<Color>(Colors.red)
+                  : const AlwaysStoppedAnimation<Color>(Colors.green),
+              minHeight: 10,
+            ),
+            const SizedBox(height: 5),
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
+              _started
+                  ? _audioLevel.toStringAsFixed(1) + ' dB'
+                  : 'Shield is not active',
+              style: Theme.of(context).textTheme.headline6,
+            ),
+            const SizedBox(height: 100),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(300, 300),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(1000.0),
+                ),
+              ),
+              onPressed: !_alert
+                  ? null
+                  : () {
+                      _stopAlert();
+                    },
+              child: const Text('STOP'),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+        onPressed: _toggleShield,
+        backgroundColor: _started ? Colors.green : Colors.red,
+        tooltip: 'Start Shield',
+        child: const Icon(Icons.shield),
+      ),
     );
   }
 }

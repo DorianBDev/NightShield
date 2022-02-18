@@ -21,22 +21,27 @@
 /// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 /// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility that Flutter provides. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_test/flutter_test.dart';
+// Intermediate class for preferences storage
+class Storage {
 
-import 'package:nightshield/main.dart';
+  // Shared preferences
+  static late final SharedPreferences sharedPreferences;
 
-void main() {
-  testWidgets('Test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const App());
+  // State
+  static bool _init = false;
 
-    // TODO.
-  });
+  // Get shared preferences (non-null)
+  static SharedPreferences local() {
+    return sharedPreferences;
+  }
+
+  // Initialize the shared preferences (will force non-null shared preferences)
+  static Future init() async {
+    if (_init) return;
+    sharedPreferences = await SharedPreferences.getInstance();
+    _init = true;
+    return sharedPreferences;
+  }
 }
