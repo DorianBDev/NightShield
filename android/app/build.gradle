@@ -21,6 +21,11 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+def signingKeyPath = localProperties.getProperty('signing.keyPath')
+def signingStorePassword = localProperties.getProperty('signing.storePassword')
+def signingKeyAlias = localProperties.getProperty('signing.keyAlias')
+def signingKeyPassword = localProperties.getProperty('signing.keyPassword')
+
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
@@ -42,7 +47,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId "net.dorianb.nightshield.nightshield"
         minSdkVersion 23
         targetSdkVersion flutter.targetSdkVersion
@@ -50,11 +54,24 @@ android {
         versionName flutterVersionName
     }
 
+    if (signingKeyPath != null && signingStorePassword != null && signingKeyAlias != null && signingKeyPassword != null) {
+        signingConfigs {
+            release {
+                storeFile file(signingKeyPath)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.debug
+            if (signingKeyPath == null || signingStorePassword == null || signingKeyAlias == null || signingKeyPassword == null) {
+                signingConfig signingConfigs.debug
+            } else {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

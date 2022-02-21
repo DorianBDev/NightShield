@@ -10,13 +10,22 @@ NightShield is an application that helps fight night terrors. It allows you to s
 
 ## Getting Started
 
-This project use Flutter. For the moment, it **only supports Android**.
+This project use Flutter. For the moment, it **only supports Android**. The minimum Android SDK supported version is **23**.
 
 ### Build
 
 1. Download the [Flutter SDK](https://docs.flutter.dev/get-started/install)
 2. Download the platform-specific SDK (either [Android SDK](https://developer.android.com/studio) or [iOS SDK](https://developer.apple.com/ios/))
-3. Build the project using `flutter build apk` ([Android](https://docs.flutter.dev/deployment/android)) or `flutter build ipa` ([iOS](https://docs.flutter.dev/deployment/ios))
+3. Create a `local.properties` files in the `android/` directory :
+```
+sdk.dir=<PATH TO ANDROID SDK>
+flutter.sdk=<PATH TO FLUTTER SDK>
+flutter.buildMode=release
+flutter.versionName=1.0.0
+flutter.versionCode=3
+flutter.minSdkVersion=21
+```
+4. Build the project using `flutter build apk` ([Android](https://docs.flutter.dev/deployment/android)) or `flutter build ipa` ([iOS](https://docs.flutter.dev/deployment/ios))
 
 ### Build icons
 
@@ -25,6 +34,21 @@ To run the [flutter_launcher_icons](https://pub.dev/packages/flutter_launcher_ic
 flutter pub get
 flutter pub run flutter_launcher_icons:main
 ```
+
+## Signing
+
+### Android
+
+First, copy your key to `$PROJECT/android/app` folder.
+Define these 4 parameters in the file `android/local.properties`:
+```
+signing.keyPath=..."      # Relative path
+signing.storePassword=...
+signing.keyAlias=...
+signing.keyPassword=...
+```
+
+Then `Build -> Flutter -> Build APK`.
 
 ## License
 
