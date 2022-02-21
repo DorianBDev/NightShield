@@ -117,8 +117,6 @@ class AudioService : Service() {
 
                     // Reset start time
                     startTime = System.currentTimeMillis().toDouble()
-
-                    Log.d("Service", "Value : $value")
                 }
 
                 // Read buffer
