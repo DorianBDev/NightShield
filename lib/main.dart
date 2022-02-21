@@ -158,7 +158,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    _notify('Alert!!!');
     _sendNotification("Alert", "Alert triggered.");
 
     // Enable flash light

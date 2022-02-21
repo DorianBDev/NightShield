@@ -175,7 +175,7 @@ class AudioService : Service() {
         // Create the notification
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL)
-                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+                    .setSmallIcon(R.mipmap.ic_launcher)
                     .setTicker("NightShield is running")
                     .setWhen(System.currentTimeMillis())
                     .setContentTitle("NightShield")
@@ -183,7 +183,7 @@ class AudioService : Service() {
                     .setContentIntent(pendingIntent)
         } else {
             Notification.Builder(this)
-                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+                    .setSmallIcon(R.mipmap.ic_launcher)
                     .setTicker("NightShield is running")
                     .setWhen(System.currentTimeMillis())
                     .setContentTitle("NightShield")

@@ -18,6 +18,14 @@ This project use Flutter. For the moment, it **only supports Android**.
 2. Download the platform-specific SDK (either [Android SDK](https://developer.android.com/studio) or [iOS SDK](https://developer.apple.com/ios/))
 3. Build the project using `flutter build apk` ([Android](https://docs.flutter.dev/deployment/android)) or `flutter build ipa` ([iOS](https://docs.flutter.dev/deployment/ios))
 
+### Build icons
+
+To run the [flutter_launcher_icons](https://pub.dev/packages/flutter_launcher_icons) to build icons :
+```
+flutter pub get
+flutter pub run flutter_launcher_icons:main
+```
+
 ## License
 
 This project is under MIT license. Please see the `LICENSE.TXT` file.

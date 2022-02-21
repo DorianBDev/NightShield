@@ -398,20 +398,17 @@ class MainActivity : FlutterActivity() {
     // Send a notification
     private fun sendNotification(title: String, message: String) {
 
-        // TODO: real app logo
-        //val fd = registrar.context().getAssets().openFd(registrar.lookupKeyForAsset("assets/logo.png"))
-
         // Prepare notification
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL)
                     .setContentTitle(title)
                     .setContentText(message)
-                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+                    .setSmallIcon(R.mipmap.ic_launcher)
         } else {
             Notification.Builder(this)
                     .setContentTitle(title)
                     .setContentText(message)
-                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+                    .setSmallIcon(R.mipmap.ic_launcher)
         }
 
         // Send notification
