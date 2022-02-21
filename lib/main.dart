@@ -118,6 +118,12 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // Send notification (real notification)
+  void _sendNotification(String title, String message) {
+    platform
+        .invokeMethod('sendNotification', {"title": title, "message": message});
+  }
+
   // Update the audio level (called by the timer)
   Future<void> _updateAudioLevel() async {
     // Check if started
@@ -153,6 +159,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     _notify('Alert!!!');
+    _sendNotification("Alert", "Alert triggered.");
 
     // Enable flash light
     if (Settings().getBool("useFlashLight")) {
@@ -178,10 +185,10 @@ class _HomePageState extends State<HomePage> {
 
     _notify('End of alert.');
 
-    // Disable flash light
+    // Invoke native method to disable flash light
     platform.invokeMethod('disableFlashLight');
 
-    // Disable alarm (sound)
+    // Invoke native method to disable alarm (sound)
     platform.invokeMethod('stopAlarm');
 
     // Disable alert for a given time
@@ -211,7 +218,6 @@ class _HomePageState extends State<HomePage> {
         Duration(milliseconds: Settings().getInt("interval")),
         (Timer t) => _updateAudioLevel());
 
-    // Set started
     _notify('Started shield.');
 
     // Update state
@@ -229,19 +235,16 @@ class _HomePageState extends State<HomePage> {
     // Invoke native method to stop listening
     platform.invokeMethod('endListening');
 
-    // Disable flash light
+    // Invoke native method to disable flash light
     platform.invokeMethod('disableFlashLight');
 
-    // Disable alarm (sound)
+    // Invoke native method to disable alarm (sound)
     platform.invokeMethod('stopAlarm');
 
     // Cancel timer
     _timer?.cancel();
 
-    // Stop alert (if any)
     _stopAlert();
-
-    // Set stopped
     _notify('Stopped shield.');
 
     // Update state

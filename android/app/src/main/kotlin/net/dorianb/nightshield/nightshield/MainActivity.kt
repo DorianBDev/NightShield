@@ -24,23 +24,30 @@
 package net.dorianb.nightshield.nightshield
 
 import androidx.annotation.NonNull
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.util.Log
 import android.Manifest
+import android.annotation.SuppressLint
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraCharacteristics
 import android.content.Context
-import android.media.Ringtone;
-import android.media.RingtoneManager;
-import android.net.Uri;
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.PowerManager
+import android.widget.Toast
+import android.content.Intent
+import android.provider.Settings
+import android.app.NotificationManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.content.ComponentName
+import android.content.ServiceConnection
+import android.os.IBinder
 
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -48,17 +55,15 @@ import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import kotlin.math.abs
+import kotlin.math.log10
+
+import net.dorianb.nightshield.nightshield.AudioService
 
 class MainActivity : FlutterActivity() {
 
     // Method channel for Flutter
     private val CHANNEL = "net.dorianb.nightshield"
-
-    // Listening state
-    private var listening = false
-
-    // Audio value (decibels)
-    private var value = 0.0
 
     // Saved record time (when permission popup)
     private var savedRecordTime = 0.0
@@ -66,47 +71,96 @@ class MainActivity : FlutterActivity() {
     // Ringtone
     private var ringtone: Ringtone? = null
 
+    // Wake lock
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    // Server
+    private lateinit var service: AudioService
+
+    // Is the service bound
+    private var serviceBound = false
+
+    // Bind Audio Service
+    private val connection = object : ServiceConnection {
+
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            val binder = service as AudioService.AudioBinder
+            this@MainActivity.service = binder.getService()
+            serviceBound = true
+
+            // Set parameter
+            this@MainActivity.service.recordTime = savedRecordTime
+        }
+
+        override fun onServiceDisconnected(p0: ComponentName?) {
+            serviceBound = false
+        }
+    }
+
     // Configure method channels
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        createNotificationChannel()
 
         // Configure method channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
 
             // Wrappers
-            if (call.method == "startListening") {
-                startListening(call.argument<Double>("recordTime")!!)
-                result.success(true)
-            } else if (call.method == "endListening") {
-                endListening()
-                result.success(true)
-            } else if (call.method == "getAudioLevel") {
-                val audioLevel = getAudioLevel()
-                result.success(audioLevel)
-            } else if (call.method == "enableFlashLight") {
-                enableFlashLight()
-                result.success(true)
-            } else if (call.method == "disableFlashLight") {
-                disableFlashLight()
-                result.success(true)
-            } else if (call.method == "playAlarm") {
-                playAlarm()
-                result.success(true)
-            } else if (call.method == "stopAlarm") {
-                stopAlarm()
-                result.success(true)
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                "startListening" -> {
+                    startListening(call.argument<Double>("recordTime")!!)
+                    result.success(true)
+                }
+                "endListening" -> {
+                    endListening()
+                    result.success(true)
+                }
+                "getAudioLevel" -> {
+                    val audioLevel = getAudioLevel()
+                    result.success(audioLevel)
+                }
+                "enableFlashLight" -> {
+                    enableFlashLight()
+                    result.success(true)
+                }
+                "disableFlashLight" -> {
+                    disableFlashLight()
+                    result.success(true)
+                }
+                "playAlarm" -> {
+                    playAlarm()
+                    result.success(true)
+                }
+                "stopAlarm" -> {
+                    stopAlarm()
+                    result.success(true)
+                }
+                "sendNotification" -> {
+                    sendNotification(call.argument<String>("title")!!, call.argument<String>("message")!!)
+                    result.success(true)
+                }
+                else -> {
+                    result.notImplemented()
+                }
             }
         }
     }
 
     // Start listenning
     private fun startListening(recordTime: Double) {
-        if (listening)
+        if (serviceBound)
             return
 
-        // Save record time
+        // Acquire wake lock
+        // Reference: https://developer.android.com/training/scheduling/wakelock#cpu
+        if (wakeLock == null) {
+            wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NightShield::WakelockTag").apply {
+                    acquire(10 * 60 * 1000L /* 10 minutes */)
+                }
+            }
+        }
+
         savedRecordTime = recordTime
 
         // Check permissions for record audio
@@ -121,90 +175,53 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        // Start listening
-        listening = true
-
-        // Run thread
-        Thread(Runnable {
-
-            // Create buffer
-            var buffer = ArrayList<Double>()
-
-            // Setup
-            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
-            val audioBuffer = ShortArray(6400)
-
-            // Prepare record
-            val record = AudioRecord(
-                    MediaRecorder.AudioSource.DEFAULT,
-                    44100,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    12800)
-
-            // Start record
-            record.startRecording()
-            var startTime = System.currentTimeMillis().toDouble()
-
-            // Record loop
-            while (listening) {
-
-                // Check time difference
-                val currentTime = System.currentTimeMillis().toDouble()
-                if (currentTime - startTime > recordTime) {
-                    // Convert to sum
-                    var res = 0.0
-                    for (x in buffer) {
-                        res = res + x
-                    }
-
-                    // Compute mean
-                    var mean = res / buffer.size.toDouble();
-
-                    // Compute DB value
-                    value = 10 * Math.log10(mean)
-
-                    // Clear buffer
-                    buffer.clear()
-
-                    // Reset start time
-                    startTime = System.currentTimeMillis().toDouble()
-                }
-
-                // Read buffer
-                record.read(audioBuffer, 0, audioBuffer.size)
-
-                // Browse audio buffer
-                for (x in audioBuffer) {
-                    if (x.toInt() == 0)
-                        continue
-
-                    // Add to buffer
-                    buffer.add(Math.abs(x.toDouble()))
-                }
+        // Check permissions for foreground service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.FOREGROUND_SERVICE), 5003)
+                return
             }
+        }
 
-            // Stop record
-            record.stop()
-            record.release()
-        }).start()
+        // Check permissions for wake lock
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WAKE_LOCK) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WAKE_LOCK), 5004)
+            return
+        }
+
+        // Check permissions for request ignore battery optimizations
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS), 5005)
+            return
+        }
+
+        checkBatteryOptimizations()
+        startAudioService()
     }
 
     // Stop listening
     private fun endListening() {
 
-        // End/Stop listening
-        listening = false
+        // Release wave lock
+        if (wakeLock != null) {
+            wakeLock?.release()
+            wakeLock = null
+        }
+
+        stopAudioService()
     }
 
     // Get latest computed audio level (in decibels)
     private fun getAudioLevel(): Double {
-        return value
+        if (!serviceBound)
+            return 0.0
+
+        return service.value
     }
 
     // Enable flash light
     private fun enableFlashLight() {
-        var cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         // Check if the device has a camera
         if (cameraManager.cameraIdList.isEmpty()) {
@@ -226,7 +243,7 @@ class MainActivity : FlutterActivity() {
 
     // Disable flash light
     private fun disableFlashLight() {
-        var cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         // Check if the device has a camera
         if (cameraManager.cameraIdList.isEmpty()) {
@@ -248,17 +265,17 @@ class MainActivity : FlutterActivity() {
 
     // Play alarm
     private fun playAlarm() {
-        var uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         ringtone = RingtoneManager.getRingtone(context, uri)
 
         // Set volumne
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ringtone!!.setVolume(1.0f)
+            ringtone!!.volume = 1.0f
         }
 
         // Set looping
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ringtone!!.setLooping(true)
+            ringtone!!.isLooping = true
         }
 
         // Start playing
@@ -273,12 +290,90 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // Check if there is any battery optimizations for this app
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val pm = context.applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(context.applicationContext.packageName)
+    }
+
+    // Check if there is any battery optimizations for this app, if yes will ask user to disable it
+    private fun checkBatteryOptimizations() {
+        if (!isIgnoringBatteryOptimizations()) {
+            val name = applicationInfo.loadLabel(packageManager).toString()
+
+            // Show toast
+            Toast.makeText(applicationContext, "Battery optimization -> All apps -> $name -> Don't optimize", Toast.LENGTH_LONG).show()
+
+            // Show notification
+            sendNotification("Battery optimization", "Battery optimization -> All apps -> $name -> Don't optimize")
+
+            // Go to settings
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            startActivity(intent)
+        }
+    }
+
+    // Create notification channel
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(CHANNEL, "NightShield", NotificationManager.IMPORTANCE_HIGH)
+
+            // Register the channel with the system
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    // Send a notification
+    private fun sendNotification(title: String, message: String) {
+
+        // TODO: real app logo
+        //val fd = registrar.context().getAssets().openFd(registrar.lookupKeyForAsset("assets/logo.png"))
+
+        // Prepare notification
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL)
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+        } else {
+            Notification.Builder(this)
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setSmallIcon(R.mipmap.ic_launcher) // TODO: real app logo
+        }
+
+        // Send notification
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(6001, builder.build())
+    }
+
+    // Create and bind Audio Service
+    private fun startAudioService() {
+        if (serviceBound)
+            return
+
+        Intent(this, AudioService::class.java).also { intent ->
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        }
+    }
+
+    // Unbind and stop Audio Service
+    private fun stopAudioService() {
+        if (!serviceBound)
+            return
+
+        service.listening = false
+        unbindService(connection)
+        serviceBound = false
+    }
+
     // Permission results processing
     override fun onRequestPermissionsResult(requestCode: Int,
                                             permissions: Array<String>, grantResults: IntArray) {
         when (requestCode) {
             5001 -> {
-                if (grantResults.size > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     startListening(savedRecordTime)
                 } else {
                     Log.d("TAG", "audio permission denied by user")
@@ -286,10 +381,34 @@ class MainActivity : FlutterActivity() {
                 return
             }
             5002 -> {
-                if (grantResults.size > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     startListening(savedRecordTime)
                 } else {
                     Log.d("TAG", "camera permission denied by user")
+                }
+                return
+            }
+            5003 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startListening(savedRecordTime)
+                } else {
+                    Log.d("TAG", "foreground service permission denied by user")
+                }
+                return
+            }
+            5004 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startListening(savedRecordTime)
+                } else {
+                    Log.d("TAG", "wake lock permission denied by user")
+                }
+                return
+            }
+            5005 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startListening(savedRecordTime)
+                } else {
+                    Log.d("TAG", "request ignore battery optimizations permission denied by user")
                 }
                 return
             }
