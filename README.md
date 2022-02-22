@@ -1,4 +1,7 @@
-# NightShield
+<div align="center">
+<img src="./etc/logo/logo_512.png" width="180"/>
+<h1>NightShield</h1>
+</div>
 
 NightShield is an application that helps fight night terrors. It allows you to set a maximum sound level (in decibels) which, when reached, triggers an alert mode. This alert mode can be customized, but by default it will turn on your flashlight and start playing an alarm song. The goal is to detect when the user is in the grip of a night terror during their night, detecting the sound level and triggering effects to try to wake them up.
 
@@ -7,6 +10,12 @@ NightShield is an application that helps fight night terrors. It allows you to s
 <img src="./etc/screenshots/2.png" width="180" height="350"/> 
 <img src="./etc/screenshots/3.png" width="180" height="350"/>
 </p>
+
+<div align="center">
+<a href="https://play.google.com/store/apps/details?id=net.dorianb.nightshield.nightshield">
+<img src="https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png" alt="Get it on Google Play" height="70"/>
+</a>
+</div>
 
 ## Getting Started
 
